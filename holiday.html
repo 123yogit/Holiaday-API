@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>🗓 Holiday API with India Support</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background: #f7f9fc; }
+    .today { font-size: 1.1rem; padding: 1rem; margin: 1rem 0; border-radius: 8px; }
+    .holiday, .weekend { margin-bottom: .5rem; }
+  </style>
+</head>
+<body class="p-4">
+
+  <div class="container">
+    <h2 class="text-center mb-4">🗓 Holiday Lookup (Worldwide + India)</h2>
+    
+    <div class="row mb-3">
+      <div class="col-md-5">
+        <label class="form-label">Country</label>
+        <select id="countrySelect" class="form-select"></select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Year</label>
+        <input id="year" class="form-control" type="number" placeholder="e.g., 2025">
+      </div>
+      <div class="col-md-4 d-flex align-items-end">
+        <button id="fetchBtn" class="btn btn-primary w-100">Get Holidays</button>
+      </div>
+    </div>
+
+    <div id="todayStatus"></div>
+    <div id="holidays"></div>
+    <div id="weekends"></div>
+  </div>
+
+  <script>
+    const countrySelect = document.getElementById("countrySelect");
+    const yearInput = document.getElementById("year");
+    const btn = document.getElementById("fetchBtn");
+    const todayDiv = document.getElementById("todayStatus");
+    const holidaysDiv = document.getElementById("holidays");
+    const weekendsDiv = document.getElementById("weekends");
+
+    const CALENDARIFIC_KEY = "YOUR_API_KEY"; // 🔑 Replace with your Calendarific key
+
+    // Load countries (Nager + India)
+    async function loadCountries() {
+      try {
+        const res = await fetch("https://date.nager.at/api/v3/AvailableCountries");
+        const countries = await res.json();
+
+        countries.forEach(c => {
+          const opt = document.createElement("option");
+          opt.value = c.countryCode;
+          opt.textContent = `${c.name} (${c.countryCode})`;
+          countrySelect.appendChild(opt);
+        });
+
+        // Add India manually
+        const indiaOpt = document.createElement("option");
+        indiaOpt.value = "IN";
+        indiaOpt.textContent = "India (IN)";
+        countrySelect.appendChild(indiaOpt);
+
+        countrySelect.value = "IN"; // default
+      } catch {
+        countrySelect.innerHTML = `<option>Error loading countries</option>`;
+      }
+    }
+
+    // Fetch holidays (switch API for India)
+    async function fetchData() {
+      const cc = countrySelect.value;
+      const year = yearInput.value.trim() || new Date().getFullYear();
+
+      todayDiv.innerHTML = "<em>Checking today...</em>";
+      holidaysDiv.innerHTML = "";
+      weekendsDiv.innerHTML = "";
+
+      if (cc === "IN") {
+        // ✅ Use Calendarific for India
+        try {
+          const resp = await fetch(`https://calendarific.com/api/v2/holidays?api_key=${CALENDARIFIC_KEY}&country=IN&year=${year}`);
+          const result = await resp.json();
+          const data = result.response.holidays;
+
+          const todayStr = new Date().toISOString().split("T")[0];
+          const todayHoliday = Object.values(data).flat().find(h => h.date.iso === todayStr);
+
+          if (todayHoliday) {
+            todayDiv.innerHTML = `<div class="today bg-warning text-dark">
+              ✅ Today (${todayStr}) is a holiday: ${todayHoliday.name}
+            </div>`;
+          } else {
+            todayDiv.innerHTML = `<div class="today bg-success text-white">
+              ❌ Today is not a public holiday in India.
+            </div>`;
+          }
+
+          holidaysDiv.innerHTML = `<h4 class="mt-4">📌 Public Holidays in India (${year})</h4>`;
+          Object.values(data).flat().forEach(h => {
+            const el = document.createElement("div");
+            el.className = "holiday alert alert-light";
+            el.innerHTML = `<b>${h.date.iso}</b> – ${h.name} <br><small>Type: ${h.type.join(", ")}</small>`;
+            holidaysDiv.appendChild(el);
+          });
+
+        } catch (err) {
+          holidaysDiv.innerHTML = `<div class="alert alert-danger">Error fetching India data</div>`;
+        }
+        return;
+      }
+
+      // ✅ For all other countries (Nager.Date)
+      try {
+        const resp = await fetch(`https://date.nager.at/api/v3/PublicHolidays/${year}/${cc}`);
+        const data = await resp.json();
+
+        const todayStr = new Date().toISOString().split("T")[0];
+        const todayHoliday = data.find(h => h.date === todayStr);
+
+        if (todayHoliday) {
+          todayDiv.innerHTML = `<div class="today bg-warning text-dark">
+            ✅ Today (${todayStr}) is a holiday: ${todayHoliday.localName}
+          </div>`;
+        } else {
+          todayDiv.innerHTML = `<div class="today bg-success text-white">
+            ❌ Today is not a public holiday in ${cc}.
+          </div>`;
+        }
+
+        holidaysDiv.innerHTML = `<h4 class="mt-4">📌 Public Holidays in ${cc} (${year})</h4>`;
+        data.forEach(h => {
+          const el = document.createElement("div");
+          el.className = "holiday alert alert-light";
+          el.innerHTML = `<b>${h.date}</b> – ${h.localName} (${h.name})`;
+          holidaysDiv.appendChild(el);
+        });
+
+        // Long weekends
+        const weekendRes = await fetch(`https://date.nager.at/api/v3/LongWeekend/${year}/${cc}`);
+        const weekends = await weekendRes.json();
+        weekendsDiv.innerHTML = `<h4 class="mt-4">🌴 Long Weekends in ${cc} (${year})</h4>`;
+        weekends.forEach(w => {
+          const el = document.createElement("div");
+          el.className = "weekend alert alert-info";
+          el.innerHTML = `From <b>${w.startDate}</b> to <b>${w.endDate}</b> (${w.dayCount} days)`;
+          weekendsDiv.appendChild(el);
+        });
+
+      } catch {
+        holidaysDiv.innerHTML = `<div class="alert alert-danger">Error fetching holiday data</div>`;
+      }
+    }
+
+    yearInput.value = new Date().getFullYear();
+    loadCountries();
+    btn.addEventListener("click", fetchData);
+  </script>
+
+</body>
+</html>
